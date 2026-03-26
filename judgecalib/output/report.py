@@ -26,7 +26,7 @@ def format_report_text(report: AuditReport) -> str:
     """
     lines = [
         "JudgeCalibrator Audit Report",
-        "=" * 50,
+        "=" * 60,
         f"Judge:      {report.judge}",
         f"Benchmark:  {report.benchmark}",
         f"Tasks:      {report.tasks_evaluated}",
@@ -37,24 +37,49 @@ def format_report_text(report: AuditReport) -> str:
     # Add probe results
     if report.probes:
         lines.append("PROBE RESULTS")
-        lines.append("-" * 50)
+        lines.append("-" * 60)
         for probe in report.probes:
-            lines.append(f"{probe.probe_name.upper()}")
-            lines.append(f"  {probe.metric_name}: {probe.metric_value:.4f}")
+            # Format probe name nicely
+            probe_display_name = probe.probe_name.replace("_", " ").title()
+            lines.append(f"{probe_display_name}")
+            lines.append(f"  Metric:  {probe.metric_name} = {probe.metric_value:.4f}")
+
+            # Add details if available
+            if probe.details:
+                details = probe.details
+                # Show key metrics from details
+                if "per_task_sds" in details:
+                    max_sd = details.get("max_sd", 0.0)
+                    lines.append(f"  Max SD:  {max_sd:.4f}")
+                if "per_task_lifts" in details:
+                    max_lift = details.get("max_lift", 0.0)
+                    lines.append(f"  Max Lift: {max_lift:.4f}")
+                if "position_a_preference_rate" in details:
+                    pref_rate = details.get("position_a_preference_rate", 0.0)
+                    lines.append(f"  Position A Preference: {pref_rate:.1%}")
+                if "bins" in details:
+                    lines.append(f"  Calibration Bins: {len(details.get('bins', []))} bins")
+
             if probe.error:
-                lines.append(f"  error: {probe.error}")
+                lines.append(f"  Error: {probe.error}")
         lines.append("")
 
     # Add trust grade
     lines.append("TRUST GRADE")
-    lines.append("-" * 50)
-    lines.append(f"Grade: {report.trust_grade.value}")
+    lines.append("-" * 60)
+    # Handle both TrustGrade enum and string values
+    grade_value = (
+        report.trust_grade.value
+        if hasattr(report.trust_grade, "value")
+        else str(report.trust_grade)
+    )
+    lines.append(f"Grade: {grade_value}")
 
     # Add recommendations
     if report.recommendations:
         lines.append("")
         lines.append("RECOMMENDATIONS")
-        lines.append("-" * 50)
+        lines.append("-" * 60)
         for rec in report.recommendations:
             lines.append(f"  • {rec}")
 
@@ -62,7 +87,7 @@ def format_report_text(report: AuditReport) -> str:
     if report.total_tokens > 0:
         lines.append("")
         lines.append("USAGE")
-        lines.append("-" * 50)
+        lines.append("-" * 60)
         lines.append(f"Total tokens: {report.total_tokens:,}")
         lines.append(f"Estimated cost: ${report.estimated_cost_usd:.2f}")
 
