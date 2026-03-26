@@ -1,0 +1,5 @@
+{
+  "name": "JudgeCalibrator",
+  "description": "Open-source LLM judge diagnostics and calibration tool.",
+  "requestFramePermissions": []
+}
