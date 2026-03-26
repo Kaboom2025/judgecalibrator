@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { AppTab, PrecomputedResult, ProbeResult } from '../types';
 import { MetricIcon } from './MetricIcon';
 
 interface LandingPageProps {
   onTabChange: (tab: AppTab) => void;
 }
+
+type SortKey = 'rank' | 'calibration' | 'consistency' | 'positional_bias' | 'verbosity_bias' | 'human_alignment';
 
 function probeStatus(p: ProbeResult): 'success' | 'warning' | 'error' {
   const v = p.metric_value;
@@ -18,41 +20,123 @@ function probeStatus(p: ProbeResult): 'success' | 'warning' | 'error' {
   }
 }
 
-const PROBE_DISPLAY: Record<string, { label: string; icon: string; format: (v: number) => string; higherIsBetter: boolean; max: number }> = {
-  calibration:     { label: 'Calibration ECE',  icon: 'Activity',      format: v => v.toFixed(3),        higherIsBetter: false, max: 0.30 },
-  consistency:     { label: 'Consistency SD',   icon: 'RefreshCw',     format: v => v.toFixed(2),        higherIsBetter: false, max: 2.0  },
-  positional_bias: { label: 'Positional Flip %', icon: 'Radar',        format: v => `${(v*100).toFixed(0)}%`, higherIsBetter: false, max: 1.0  },
-  verbosity_bias:  { label: 'Verbosity Lift',   icon: 'AlertTriangle', format: v => `+${v.toFixed(1)}`,  higherIsBetter: false, max: 2.0  },
-  human_alignment: { label: 'Human Alignment ρ', icon: 'ShieldCheck',  format: v => v.toFixed(2),        higherIsBetter: true,  max: 1.0  },
-};
-
-const PROBE_ORDER = ['calibration', 'consistency', 'positional_bias', 'verbosity_bias', 'human_alignment'];
-
-const STATUS_DOT: Record<string, string> = {
-  success: 'bg-emerald-500/80 shadow-[0_0_8px_rgba(16,185,129,0.4)]',
-  warning: 'bg-amber-500/80 shadow-[0_0_8px_rgba(245,158,11,0.4)]',
-  error:   'bg-red-500/80 shadow-[0_0_8px_rgba(239,68,68,0.4)]',
-};
-
+const GRADE_ORDER: Record<string, number> = { A: 0, 'B+': 1, B: 2, C: 3 };
 const GRADE_COLOR: Record<string, string> = {
   A: 'text-emerald-400',
   'B+': 'text-emerald-400',
   B: 'text-amber-400',
   C: 'text-red-400',
 };
+const GRADE_BG: Record<string, string> = {
+  A: 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+  'B+': 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400',
+  B: 'bg-amber-500/10 border-amber-500/20 text-amber-400',
+  C: 'bg-red-500/10 border-red-500/20 text-red-400',
+};
 
-function gradeColor(grade: string) {
-  const g = grade.replace('_PLUS', '+');
-  return GRADE_COLOR[g] ?? 'text-zinc-100';
+const STATUS_CELL: Record<string, string> = {
+  success: 'text-emerald-400',
+  warning: 'text-amber-400',
+  error:   'text-red-400',
+};
+const STATUS_DOT: Record<string, string> = {
+  success: 'bg-emerald-500',
+  warning: 'bg-amber-500',
+  error:   'bg-red-500',
+};
+
+const COLS: { key: SortKey; label: string; icon: string; shortLabel: string; format: (v: number) => string }[] = [
+  { key: 'calibration',     label: 'Calibration ECE',   shortLabel: 'ECE',    icon: 'Activity',      format: v => v.toFixed(3) },
+  { key: 'consistency',     label: 'Consistency SD',    shortLabel: 'SD',     icon: 'RefreshCw',     format: v => v.toFixed(2) },
+  { key: 'positional_bias', label: 'Positional Flip',   shortLabel: 'Pos.',   icon: 'Radar',         format: v => `${(v*100).toFixed(0)}%` },
+  { key: 'verbosity_bias',  label: 'Verbosity Lift',    shortLabel: 'Verb.',  icon: 'AlertTriangle', format: v => `+${v.toFixed(2)}` },
+  { key: 'human_alignment', label: 'Human Alignment ρ', shortLabel: 'Align.', icon: 'ShieldCheck',   format: v => v.toFixed(2) },
+];
+
+function formatGrade(grade: string) { return grade.replace('_PLUS', '+'); }
+
+function gradeScore(result: PrecomputedResult): number {
+  const g = formatGrade(result.trust_grade);
+  return (GRADE_ORDER[g] ?? 9) * 10 - (result.probes.find(p => p.probe_name === 'human_alignment')?.metric_value ?? 0);
 }
 
-function formatGrade(grade: string) {
-  return grade.replace('_PLUS', '+');
+function probeVal(result: PrecomputedResult, name: string): ProbeResult | undefined {
+  return result.probes.find(p => p.probe_name === name);
+}
+
+interface RowProps {
+  key?: React.Key;
+  rank: number;
+  result: PrecomputedResult;
+  expanded: boolean;
+  onToggle: () => void;
+}
+
+function Row({ rank, result, expanded, onToggle }: RowProps) {
+  const grade = formatGrade(result.trust_grade);
+
+  return (
+    <>
+      <tr
+        className="border-b border-outline-variant/10 hover:bg-surface-container/40 cursor-pointer transition-colors"
+        onClick={onToggle}
+      >
+        {/* Rank */}
+        <td className="py-3 pl-6 pr-3 font-mono text-xs text-zinc-600 w-10">{rank}</td>
+
+        {/* Model name */}
+        <td className="py-3 pr-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`inline-flex items-center justify-center border text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded flex-shrink-0 ${GRADE_BG[grade] ?? 'bg-zinc-500/10 border-zinc-500/20 text-zinc-400'}`}>
+              {grade}
+            </span>
+            <span className="font-mono text-xs text-zinc-200 truncate">{result.judge}</span>
+          </div>
+        </td>
+
+        {/* Metric columns */}
+        {COLS.map(col => {
+          const p = probeVal(result, col.key);
+          if (!p) return <td key={col.key} className="py-3 px-3 text-center font-mono text-xs text-zinc-600">—</td>;
+          const status = probeStatus(p);
+          return (
+            <td key={col.key} className={`py-3 px-3 text-center font-mono text-xs tabular-nums ${STATUS_CELL[status]}`}>
+              {col.format(p.metric_value)}
+            </td>
+          );
+        })}
+
+        {/* Expand toggle */}
+        <td className="py-3 pr-6 pl-3 w-8 text-center">
+          <span className={`font-mono text-xs text-zinc-600 transition-transform inline-block ${expanded ? 'rotate-90' : ''}`}>›</span>
+        </td>
+      </tr>
+
+      {/* Expanded recommendations row */}
+      {expanded && (
+        <tr className="bg-surface-container/20">
+          <td colSpan={8} className="px-6 py-4">
+            <div className="flex flex-wrap gap-2">
+              {result.recommendations.map((rec, i) => (
+                <span key={i} className="flex items-start gap-2 text-xs text-zinc-400 font-headline leading-relaxed basis-full sm:basis-auto sm:flex-1 sm:min-w-[280px]">
+                  <span className="text-primary mt-0.5 flex-shrink-0">→</span>
+                  {rec}
+                </span>
+              ))}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
 }
 
 export function LandingPage({ onTabChange }: LandingPageProps) {
   const [results, setResults] = useState<PrecomputedResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sortKey, setSortKey] = useState<SortKey>('rank');
+  const [sortAsc, setSortAsc] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/precomputed')
@@ -64,14 +148,30 @@ export function LandingPage({ onTabChange }: LandingPageProps) {
       .catch(() => setLoading(false));
   }, []);
 
-  const probeMap = (result: PrecomputedResult) => {
-    const map: Record<string, ProbeResult> = {};
-    for (const p of result.probes) map[p.probe_name] = p;
-    return map;
-  };
+  const sorted = useMemo(() => {
+    const base = [...results].sort((a, b) => gradeScore(a) - gradeScore(b));
+    if (sortKey === 'rank') return sortAsc ? base : [...base].reverse();
+
+    return [...base].sort((a, b) => {
+      const av = probeVal(a, sortKey)?.metric_value ?? 0;
+      const bv = probeVal(b, sortKey)?.metric_value ?? 0;
+      return sortAsc ? av - bv : bv - av;
+    });
+  }, [results, sortKey, sortAsc]);
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) setSortAsc(a => !a);
+    else { setSortKey(key); setSortAsc(true); }
+  }
+
+  const gradeGroups = useMemo(() => {
+    const counts: Record<string, number> = { A: 0, 'B+': 0, B: 0, C: 0 };
+    for (const r of results) counts[formatGrade(r.trust_grade)] = (counts[formatGrade(r.trust_grade)] ?? 0) + 1;
+    return counts;
+  }, [results]);
 
   return (
-    <div className="pt-32 pb-24 px-8 lg:px-16 max-w-[1440px] mx-auto w-full">
+    <div className="pt-32 pb-24 px-4 sm:px-8 lg:px-16 max-w-[1440px] mx-auto w-full">
       {/* Hero */}
       <div className="text-center mb-20">
         <h1 className="text-4xl lg:text-6xl font-headline font-black tracking-tight text-zinc-100 mb-6 leading-tight">
@@ -98,108 +198,122 @@ export function LandingPage({ onTabChange }: LandingPageProps) {
         </div>
       </div>
 
-      {/* Model Comparison */}
+      {/* Leaderboard */}
       {!loading && results.length > 0 && (
         <div>
-          <h2 className="text-on-surface-variant font-mono text-[0.6875rem] uppercase tracking-tighter mb-8 opacity-60">
-            Model Comparison — 580 Tasks Each
-          </h2>
-
-          {/* Trust grade cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-            {results.map(r => (
-              <div key={r.judge} className="bg-surface-container-low rounded-xl p-8 flex items-center gap-8">
-                <div className="flex-shrink-0 flex flex-col items-center justify-center bg-surface-container-lowest rounded-xl p-6 min-w-[100px]">
-                  <span className={`text-5xl font-headline font-black tracking-tighter ${gradeColor(r.trust_grade)}`}>
-                    {formatGrade(r.trust_grade)}
-                  </span>
-                  <span className="text-[0.6rem] font-mono uppercase tracking-[0.2em] text-zinc-500 mt-2">Trust Grade</span>
-                </div>
-                <div>
-                  <h3 className="text-xl font-headline font-bold text-zinc-100 mb-1">{r.judge}</h3>
-                  <p className="text-zinc-500 font-mono text-xs">{r.benchmark} · {r.tasks_evaluated} tasks</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {r.probes.map(p => (
-                      <span key={p.probe_name} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-mono uppercase tracking-wider bg-surface-container-highest`}>
-                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${STATUS_DOT[probeStatus(p)]}`} />
-                        {PROBE_DISPLAY[p.probe_name]?.label ?? p.probe_name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
+          {/* Section header + summary badges */}
+          <div className="flex flex-wrap items-center gap-4 mb-6">
+            <h2 className="text-on-surface-variant font-mono text-[0.6875rem] uppercase tracking-tighter opacity-60 mr-2">
+              Judge Leaderboard — {results.length} Models · 580 Tasks Each
+            </h2>
+            {(Object.entries(gradeGroups) as [string, number][]).filter(([, n]) => n > 0).map(([grade, n]) => (
+              <span key={grade} className={`inline-flex items-center gap-1 border text-[10px] font-mono px-2 py-0.5 rounded ${GRADE_BG[grade] ?? ''}`}>
+                <span>{grade}</span>
+                <span className="opacity-60">×{n}</span>
+              </span>
             ))}
           </div>
 
-          {/* Metric comparison chart */}
+          {/* Table */}
           <div className="bg-surface-container-low rounded-xl overflow-hidden mb-12">
-            <div className="p-8 border-b border-outline-variant/10">
-              <h3 className="font-headline font-semibold text-zinc-100">Metric Breakdown</h3>
-              <p className="text-zinc-500 text-sm font-headline mt-1">Lower is better for calibration, consistency, bias, verbosity. Higher is better for alignment.</p>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b border-outline-variant/20 bg-surface-container">
+                    <th className="py-3 pl-6 pr-3 text-left font-mono text-[10px] uppercase tracking-widest text-zinc-600 w-10">#</th>
+                    <th
+                      className="py-3 pr-4 text-left font-mono text-[10px] uppercase tracking-widest text-zinc-500 cursor-pointer hover:text-zinc-300 select-none"
+                      onClick={() => handleSort('rank')}
+                    >
+                      Model {sortKey === 'rank' && (sortAsc ? '↑' : '↓')}
+                    </th>
+                    {COLS.map(col => (
+                      <th
+                        key={col.key}
+                        className="py-3 px-3 text-center font-mono text-[10px] uppercase tracking-widest text-zinc-500 cursor-pointer hover:text-zinc-300 select-none whitespace-nowrap"
+                        onClick={() => handleSort(col.key)}
+                        title={col.label}
+                      >
+                        <span className="flex items-center justify-center gap-1">
+                          <MetricIcon name={col.icon} size={11} className="opacity-60" />
+                          {col.shortLabel}
+                          {sortKey === col.key && <span>{sortAsc ? '↑' : '↓'}</span>}
+                        </span>
+                      </th>
+                    ))}
+                    <th className="py-3 pr-6 pl-3 w-8" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((r, i) => (
+                    <Row
+                      key={r.judge}
+                      rank={i + 1}
+                      result={r}
+                      expanded={expanded === r.judge}
+                      onToggle={() => setExpanded(prev => prev === r.judge ? null : r.judge)}
+                    />
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="p-8 space-y-6">
-              {PROBE_ORDER.map(probeName => {
-                const display = PROBE_DISPLAY[probeName];
-                if (!display) return null;
-                return (
-                  <div key={probeName}>
-                    <div className="flex items-center gap-3 mb-3">
-                      <MetricIcon name={display.icon} size={14} className="text-zinc-500" />
-                      <span className="font-mono text-[0.6875rem] uppercase tracking-widest text-zinc-400">{display.label}</span>
-                    </div>
-                    <div className="space-y-2">
-                      {results.map(r => {
-                        const pm = probeMap(r);
-                        const p = pm[probeName];
-                        if (!p) return null;
-                        const status = probeStatus(p);
-                        const barWidth = display.higherIsBetter
-                          ? (p.metric_value / display.max) * 100
-                          : ((display.max - p.metric_value) / display.max) * 100;
-                        const clampedWidth = Math.max(4, Math.min(100, barWidth));
-                        const barColor = status === 'success' ? 'bg-emerald-500/70' : status === 'warning' ? 'bg-amber-500/70' : 'bg-red-500/70';
-                        return (
-                          <div key={r.judge} className="flex items-center gap-4">
-                            <span className="font-mono text-[10px] text-zinc-500 w-36 flex-shrink-0 truncate">{r.judge}</span>
-                            <div className="flex-1 bg-surface-container-highest rounded-full h-2 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${barColor}`}
-                                style={{ width: `${clampedWidth}%` }}
-                              />
-                            </div>
-                            <span className={`font-mono text-xs w-14 text-right flex-shrink-0 ${status === 'success' ? 'text-emerald-400' : status === 'warning' ? 'text-amber-400' : 'text-red-400'}`}>
-                              {display.format(p.metric_value)}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+
+            {/* Legend */}
+            <div className="px-6 py-3 border-t border-outline-variant/10 flex items-center gap-6 flex-wrap">
+              <span className="font-mono text-[10px] text-zinc-600 uppercase tracking-wider">Legend</span>
+              {(['success', 'warning', 'error'] as const).map(s => (
+                <span key={s} className="flex items-center gap-1.5 font-mono text-[10px] text-zinc-500">
+                  <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[s]}`} />
+                  {s === 'success' ? 'Pass' : s === 'warning' ? 'Caution' : 'Fail'}
+                </span>
+              ))}
+              <span className="font-mono text-[10px] text-zinc-600 ml-auto">Click a row to expand recommendations</span>
             </div>
           </div>
 
-          {/* Recommendations */}
-          <div>
-            <h2 className="text-on-surface-variant font-mono text-[0.6875rem] uppercase tracking-tighter mb-6 opacity-60">
-              Recommendations
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {results.map(r => (
-                <div key={r.judge} className="bg-surface-container-low rounded-xl p-6">
-                  <h4 className="font-mono text-xs text-zinc-500 uppercase tracking-widest mb-4">{r.judge}</h4>
-                  <ul className="space-y-3">
-                    {r.recommendations.map((rec, i) => (
-                      <li key={i} className="flex items-start gap-3 text-sm text-zinc-300 font-headline leading-relaxed">
-                        <span className="text-primary mt-0.5 flex-shrink-0">→</span>
-                        {rec}
-                      </li>
-                    ))}
-                  </ul>
+          {/* Metric guide */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            {COLS.map(col => (
+              <div key={col.key} className="bg-surface-container-low rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <MetricIcon name={col.icon} size={13} className="text-zinc-500" />
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-400">{col.shortLabel}</span>
                 </div>
-              ))}
-            </div>
+                <p className="text-xs text-zinc-500 font-headline leading-relaxed">{col.label}</p>
+                <div className="mt-2 space-y-0.5 font-mono text-[9px] text-zinc-600">
+                  {col.key === 'human_alignment'
+                    ? <>
+                        <div><span className="text-emerald-500">●</span> &gt;0.80 pass</div>
+                        <div><span className="text-amber-500">●</span> &gt;0.60 caution</div>
+                        <div><span className="text-red-500">●</span> ≤0.60 fail</div>
+                      </>
+                    : col.key === 'calibration'
+                      ? <>
+                          <div><span className="text-emerald-500">●</span> &lt;0.05 pass</div>
+                          <div><span className="text-amber-500">●</span> &lt;0.10 caution</div>
+                          <div><span className="text-red-500">●</span> ≥0.10 fail</div>
+                        </>
+                      : col.key === 'consistency'
+                        ? <>
+                            <div><span className="text-emerald-500">●</span> &lt;0.5 pass</div>
+                            <div><span className="text-amber-500">●</span> &lt;1.2 caution</div>
+                            <div><span className="text-red-500">●</span> ≥1.2 fail</div>
+                          </>
+                        : col.key === 'positional_bias'
+                          ? <>
+                              <div><span className="text-emerald-500">●</span> &lt;5% pass</div>
+                              <div><span className="text-amber-500">●</span> &lt;30% caution</div>
+                              <div><span className="text-red-500">●</span> ≥30% fail</div>
+                            </>
+                          : <>
+                              <div><span className="text-emerald-500">●</span> &lt;+0.3 pass</div>
+                              <div><span className="text-amber-500">●</span> &lt;+0.9 caution</div>
+                              <div><span className="text-red-500">●</span> ≥+0.9 fail</div>
+                            </>
+                  }
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

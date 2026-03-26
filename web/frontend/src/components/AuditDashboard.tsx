@@ -2,8 +2,131 @@ import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } f
 import {
   ChevronDown, Activity, RefreshCw, Radar,
   ShieldCheck, BrainCircuit, Thermometer, AlertTriangle, ChevronRight,
-  CheckCircle2, Circle, Loader2,
+  CheckCircle2, Circle, Loader2, ChevronUp,
 } from 'lucide-react';
+
+// ── Model catalogue ────────────────────────────────────────────────────────
+
+interface ModelDef {
+  id: string;
+  label: string;
+  note?: string;
+}
+
+interface ProviderGroup {
+  name: string;
+  color: string;      // Tailwind text colour for the provider badge
+  badge: string;      // bg colour for the badge
+  models: ModelDef[];
+}
+
+const MODEL_GROUPS: ProviderGroup[] = [
+  {
+    name: 'OpenAI',
+    color: 'text-emerald-300',
+    badge: 'bg-emerald-500/10 border-emerald-500/20',
+    models: [
+      { id: 'gpt-4o',       label: 'GPT-4o',        note: 'flagship' },
+      { id: 'gpt-4o-mini',  label: 'GPT-4o mini',   note: 'fast · cheap' },
+      { id: 'gpt-4-turbo',  label: 'GPT-4 Turbo' },
+      { id: 'o1',           label: 'o1',             note: 'reasoning' },
+      { id: 'o1-mini',      label: 'o1-mini',        note: 'reasoning · fast' },
+      { id: 'o3-mini',      label: 'o3-mini',        note: 'reasoning · cheap' },
+    ],
+  },
+  {
+    name: 'Anthropic',
+    color: 'text-orange-300',
+    badge: 'bg-orange-500/10 border-orange-500/20',
+    models: [
+      { id: 'claude-opus-4-5',             label: 'Claude Opus 4.5',      note: 'most capable' },
+      { id: 'claude-sonnet-4-5',           label: 'Claude Sonnet 4.5',    note: 'balanced' },
+      { id: 'claude-haiku-4-5-20251001',   label: 'Claude Haiku 4.5',     note: 'fast · cheap' },
+      { id: 'claude-3-5-sonnet-20241022',  label: 'Claude 3.5 Sonnet',    note: 'prev-gen' },
+      { id: 'claude-3-haiku-20240307',     label: 'Claude 3 Haiku',       note: 'prev-gen · cheap' },
+    ],
+  },
+  {
+    name: 'Google',
+    color: 'text-blue-300',
+    badge: 'bg-blue-500/10 border-blue-500/20',
+    models: [
+      { id: 'gemini/gemini-2.5-pro',          label: 'Gemini 2.5 Pro',       note: 'most capable' },
+      { id: 'gemini/gemini-2.5-flash',        label: 'Gemini 2.5 Flash',     note: 'fast · cheap' },
+      { id: 'gemini/gemini-2.0-flash',        label: 'Gemini 2.0 Flash' },
+      { id: 'gemini/gemini-1.5-pro-latest',   label: 'Gemini 1.5 Pro',       note: 'prev-gen' },
+      { id: 'gemini/gemini-1.5-flash-latest', label: 'Gemini 1.5 Flash',     note: 'prev-gen · cheap' },
+    ],
+  },
+];
+
+function ModelPicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+
+  const selectedModel = MODEL_GROUPS.flatMap(g => g.models).find(m => m.id === value);
+  const selectedGroup = MODEL_GROUPS.find(g => g.models.some(m => m.id === value));
+
+  return (
+    <div className="relative">
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between bg-surface-container-lowest text-on-surface font-mono text-sm p-4 rounded-md focus:ring-1 focus:ring-primary/50 transition-all hover:bg-surface-container-high"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          {selectedGroup && (
+            <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${selectedGroup.badge} ${selectedGroup.color} flex-shrink-0`}>
+              {selectedGroup.name}
+            </span>
+          )}
+          <span className="truncate">{selectedModel?.label ?? value}</span>
+          {selectedModel?.note && (
+            <span className="text-zinc-600 text-[10px] hidden sm:inline">{selectedModel.note}</span>
+          )}
+        </div>
+        {open ? <ChevronUp size={16} className="text-zinc-500 flex-shrink-0" /> : <ChevronDown size={16} className="text-zinc-500 flex-shrink-0" />}
+      </button>
+
+      {/* Dropdown panel */}
+      {open && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-surface-container-highest border border-zinc-700/60 rounded-xl shadow-2xl z-20 overflow-hidden">
+          {MODEL_GROUPS.map(group => (
+            <div key={group.name}>
+              <div className={`px-4 py-2 border-b border-zinc-800 flex items-center gap-2`}>
+                <span className={`text-[10px] font-mono font-semibold uppercase tracking-widest ${group.color}`}>{group.name}</span>
+              </div>
+              <div className="p-2 grid grid-cols-1 gap-0.5">
+                {group.models.map(model => (
+                  <button
+                    key={model.id}
+                    type="button"
+                    onClick={() => { onChange(model.id); setOpen(false); }}
+                    className={`flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-left transition-all ${
+                      value === model.id
+                        ? 'bg-primary/15 text-primary'
+                        : 'text-zinc-300 hover:bg-surface-container-low hover:text-zinc-100'
+                    }`}
+                  >
+                    <span className="font-mono text-sm">{model.label}</span>
+                    <div className="flex items-center gap-2">
+                      {model.note && (
+                        <span className="text-[10px] font-mono text-zinc-600">{model.note}</span>
+                      )}
+                      {value === model.id && (
+                        <CheckCircle2 size={12} className="text-primary flex-shrink-0" />
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 import { motion, AnimatePresence } from 'motion/react';
 import { AuditMetric, Insight, SystemConfig, AuditStatus } from '../types';
 import { MetricIcon } from './MetricIcon';
@@ -209,24 +332,7 @@ export const AuditDashboard = forwardRef<AuditDashboardRef>((_, ref) => {
           <form onSubmit={handleSubmit} className="bg-surface-container-low p-8 rounded-xl space-y-6">
             <div className="space-y-2">
               <label className="block font-mono text-[0.6875rem] text-on-surface-variant uppercase tracking-widest">Judge Model</label>
-              <div className="relative">
-                <select className="w-full bg-surface-container-lowest border-none text-on-surface font-mono text-sm p-4 rounded-md focus:ring-1 focus:ring-primary/50 appearance-none transition-all" value={config.judgeModel} onChange={e => setConfig({ ...config, judgeModel: e.target.value })}>
-                  <optgroup label="OpenAI">
-                    <option value="gpt-4o">gpt-4o</option>
-                    <option value="gpt-4o-mini">gpt-4o-mini</option>
-                    <option value="gpt-4-turbo">gpt-4-turbo</option>
-                  </optgroup>
-                  <optgroup label="Anthropic">
-                    <option value="claude-opus-4-5">claude-opus-4-5</option>
-                    <option value="claude-sonnet-4-5">claude-sonnet-4-5</option>
-                    <option value="claude-haiku-4-5">claude-haiku-4-5</option>
-                  </optgroup>
-                  <optgroup label="Google">
-                    <option value="gemini/gemini-2.5-flash">gemini-2.5-flash</option>
-                  </optgroup>
-                </select>
-                <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none" />
-              </div>
+              <ModelPicker value={config.judgeModel} onChange={id => setConfig({ ...config, judgeModel: id })} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
