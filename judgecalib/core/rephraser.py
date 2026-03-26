@@ -8,6 +8,11 @@ REPHRASER_SYSTEM_PROMPT = """Generate {n} semantically equivalent variations of 
 Keep the same evaluation criteria and task, but vary the phrasing, sentence structure, and wording.
 Return ONLY a JSON array of {n} strings, no other text."""
 
+EXPANDER_SYSTEM_PROMPT = """Expand the following answer to be approximately 50% longer.
+Add relevant details, examples, and elaboration that genuinely improve the response.
+Do NOT add filler phrases, repetition, or padding — only substantive content.
+Return ONLY the expanded answer, no commentary."""
+
 
 class Rephraser:
     """Generates semantic variations of evaluation prompts."""
@@ -59,14 +64,56 @@ class Rephraser:
             api_key=self.api_key,
         )
 
-        # Parse response
-        raw = response.choices[0].message.content
-        variations = json.loads(raw)
+        # Parse response — strip markdown fences if present
+        raw = response.choices[0].message.content or ""
+        raw = raw.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```", 2)[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
 
-        # Convert all to strings and truncate to n
-        result = [str(v) for v in variations[:n]]
+        try:
+            variations = json.loads(raw)
+            result = [str(v) for v in variations[:n]]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            # Fallback: return the original prompt repeated n times
+            result = [prompt] * n
 
         # Cache result
         self._cache[cache_key] = result
 
+        return result
+
+    def expand(self, text: str) -> str:
+        """
+        Expand text to be ~50% longer with substantive content (no filler).
+
+        Args:
+            text: Original text to expand
+
+        Returns:
+            Expanded version of the text, or original if expansion fails
+        """
+        cache_key = hashlib.md5(f"expand:{text}".encode()).hexdigest()
+
+        if cache_key in self._cache:
+            return self._cache[cache_key][0]
+
+        try:
+            response = litellm.completion(
+                model=self.model_name,
+                messages=[
+                    {"role": "system", "content": EXPANDER_SYSTEM_PROMPT},
+                    {"role": "user", "content": text},
+                ],
+                api_key=self.api_key,
+            )
+            result = (response.choices[0].message.content or "").strip()
+            if not result:
+                result = text
+        except Exception:
+            result = text
+
+        self._cache[cache_key] = [result]
         return result

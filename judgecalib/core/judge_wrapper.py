@@ -11,6 +11,12 @@ Return ONLY a JSON object with these fields:
 - "confidence": integer 0-100 (your confidence in this score)
 - "reasoning": one sentence explanation"""
 
+PAIRWISE_SYSTEM_PROMPT = """You are an evaluation judge comparing two responses to the same question.
+Return ONLY a JSON object with these fields:
+- "preference": "A" or "B" (which response better answers the question)
+- "confidence": integer 0-100 (your confidence in this choice)
+- "reasoning": one sentence explanation"""
+
 
 class JudgeWrapper:
     """Wrapper around an LLM judge model."""
@@ -52,6 +58,48 @@ class JudgeWrapper:
         )
         raw = response.choices[0].message.content
         return self._parse_response(task.id, raw)
+
+    def evaluate_pairwise(
+        self, question: str, option_a: str, option_b: str
+    ) -> dict:
+        """
+        Compare two options and return which is preferred.
+
+        Args:
+            question: The question both options are answering
+            option_a: First response (presented as Answer A)
+            option_b: Second response (presented as Answer B)
+
+        Returns:
+            Dict with 'preference' ("A" or "B"), 'confidence' (0-100), 'reasoning'
+        """
+        user_content = (
+            f"Question: {question}\n\n"
+            f"Answer A: {option_a}\n\n"
+            f"Answer B: {option_b}"
+        )
+        response = litellm.completion(
+            model=self.model_name,
+            messages=[
+                {"role": "system", "content": PAIRWISE_SYSTEM_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+            api_key=self.api_key,
+            response_format={"type": "json_object"},
+        )
+        raw = response.choices[0].message.content
+        try:
+            data = json.loads(raw)
+            preference = data.get("preference", "A")
+            if preference not in ("A", "B"):
+                preference = "A"
+            confidence = max(0.0, min(100.0, float(data.get("confidence", 50))))
+            reasoning = data.get("reasoning")
+        except (json.JSONDecodeError, TypeError):
+            preference = "A"
+            confidence = 50.0
+            reasoning = None
+        return {"preference": preference, "confidence": confidence, "reasoning": reasoning}
 
     def _parse_response(self, task_id: str, raw: str) -> JudgeResponse:
         """

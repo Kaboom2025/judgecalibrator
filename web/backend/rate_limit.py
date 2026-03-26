@@ -29,6 +29,8 @@ class RateLimiter:
         Returns:
             True if request is allowed, False if rate limited
         """
+        if ip in ("127.0.0.1", "::1", "localhost"):
+            return True
         self._cleanup(ip)
         return len(self._records[ip]) < self._max
 

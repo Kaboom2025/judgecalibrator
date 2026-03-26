@@ -210,67 +210,30 @@ class Prober:
             if task.options is None or len(task.options) < 2:
                 continue
 
-            # Take first two options
             option_1 = task.options[0]
             option_2 = task.options[1]
 
-            # Create task with option_1 as Answer A, option_2 as Answer B
-            task_ab = Task(
-                id=task.id,
-                question=f"{task.question}\nAnswer A: {option_1}\nAnswer B: {option_2}",
-                reference_answer=None,
-                human_score=task.human_score,
-                category=task.category,
-                metadata=task.metadata,
-            )
+            # AB order: option_1 = A, option_2 = B
+            result_ab = self.judge.evaluate_pairwise(task.question, option_1, option_2)
+            # BA order: option_2 = A, option_1 = B
+            result_ba = self.judge.evaluate_pairwise(task.question, option_2, option_1)
 
-            # Create task with option_2 as Answer A, option_1 as Answer B (swapped)
-            task_ba = Task(
-                id=task.id,
-                question=f"{task.question}\nAnswer A: {option_2}\nAnswer B: {option_1}",
-                reference_answer=None,
-                human_score=task.human_score,
-                category=task.category,
-                metadata=task.metadata,
-            )
+            # Does the judge prefer option_1 in each ordering?
+            option_1_preferred_in_ab = result_ab["preference"] == "A"
+            option_1_preferred_in_ba = result_ba["preference"] == "B"
 
-            # Get responses
-            response_ab = self.judge.evaluate(task_ab)
-            response_ba = self.judge.evaluate(task_ba)
-
-            # Determine preference based on scores
-            # score > 5.5 means the judge prefers Answer A in that comparison
-            position_a_preferred_in_ab = response_ab.score > 5.5
-            position_a_preferred_in_ba = response_ba.score > 5.5
-
-            # Track position A preference (how often does judge prefer position A?)
-            if position_a_preferred_in_ab:
+            # Track how often the judge prefers position A (in AB arrangement)
+            if result_ab["preference"] == "A":
                 position_a_preference_count += 1
 
-            # A flip in content preference occurs when the same option's preference reverses
-            # In AB order: option_1 is in position A, so it's preferred if position_a_preferred_in_ab = True
-            # In BA order: option_1 is in position B, so it's preferred if position_a_preferred_in_ba = False
-            # A flip occurs when option_1's preference is inconsistent: position_a_preferred_in_ab != (not position_a_preferred_in_ba)
-            # Which simplifies to: position_a_preferred_in_ab == position_a_preferred_in_ba (both true or both false means same position is always preferred)
-            # When position_a_preferred_in_ab == position_a_preferred_in_ba == True, option_1 is preferred in AB but not in BA -> FLIP
-            # When position_a_preferred_in_ab == position_a_preferred_in_ba == False, option_1 is not preferred in AB, and not preferred in BA -> CONSISTENT
-            #
-            # Actually, let me think differently:
-            # - In AB: if position_a_preferred_in_ab is True, option_1 wins
-            # - In BA: if position_a_preferred_in_ba is True, option_2 wins (option_1 loses)
-            # So option_1's preference is: position_a_preferred_in_ab
-            # And in BA order, option_1's preference should be: NOT position_a_preferred_in_ba
-            option_1_wins_in_ab = position_a_preferred_in_ab
-            option_1_wins_in_ba = not position_a_preferred_in_ba
-
-            # A flip is when option_1 has different outcomes in the two orders
-            if option_1_wins_in_ab != option_1_wins_in_ba:
+            # A flip means the same content wins in one order but loses in the other
+            if option_1_preferred_in_ab != option_1_preferred_in_ba:
                 flips += 1
 
             total_comparisons += 1
 
             if self.progress_callback:
-                current = total_comparisons * 2  # 2 evals per task
+                current = total_comparisons * 2
                 total = len(self.tasks) * 2
                 self.progress_callback(current, total)
 
@@ -292,7 +255,7 @@ class Prober:
 
         return result
 
-    def run_verbosity_bias(self) -> ProbeResult:
+    def run_verbosity_bias(self, expander: "Rephraser" = None) -> ProbeResult:  # noqa: F821
         """
         Run verbosity bias probe by comparing original and padded versions.
 
@@ -319,8 +282,11 @@ class Prober:
                 metadata=task.metadata,
             )
 
-            # Create padded version of the answer
-            padded_answer = _pad_text(task.reference_answer, target_ratio=1.5)
+            # Expand the answer using LLM if available, else fall back to rule-based padding
+            if expander is not None:
+                padded_answer = expander.expand(task.reference_answer)
+            else:
+                padded_answer = _pad_text(task.reference_answer, target_ratio=1.5)
 
             # Create task with padded answer
             task_padded = Task(
