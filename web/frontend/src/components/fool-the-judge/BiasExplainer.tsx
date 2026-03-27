@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
+import { Trophy } from 'lucide-react';
 import { BiasFound, BIAS_EXPLAINERS } from './constants';
 
 interface BiasExplainerProps {
@@ -35,7 +36,7 @@ export function BiasExplainer({ lastBiasTriggered, biasesFound }: BiasExplainerP
       {biasesFound.size > 0 && (
         <div className="bg-surface-container-low rounded-xl p-5 border border-outline-variant/10">
           <span className="font-mono text-[10px] uppercase tracking-widest text-zinc-500 block mb-3">Biases You've Demonstrated</span>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 mb-4">
             {Array.from(biasesFound).map(b => (
               <span key={b} className="font-mono text-xs bg-primary/10 text-primary px-3 py-1 rounded-full">
                 {b === 'positional' ? 'Positional Bias' : b === 'verbosity' ? 'Verbosity Bias' : 'Manual Exploit'}
@@ -46,10 +47,27 @@ export function BiasExplainer({ lastBiasTriggered, biasesFound }: BiasExplainerP
                 {3 - biasesFound.size} more to find...
               </span>
             )}
-            {biasesFound.size === 3 && (
-              <span className="font-mono text-xs text-emerald-400 px-3 py-1">All biases found!</span>
-            )}
           </div>
+          <AnimatePresence>
+            {biasesFound.size === 3 && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-5 flex items-start gap-4"
+              >
+                <div className="w-9 h-9 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                  <Trophy size={16} className="text-emerald-400" />
+                </div>
+                <div>
+                  <p className="font-headline font-bold text-emerald-300 mb-1">You found all 3 biases!</p>
+                  <p className="font-headline text-xs text-zinc-400 leading-relaxed">
+                    LLM judges are powerful but flawed. Positional bias, verbosity bias, and prompt manipulation are real vulnerabilities in today's AI evaluation pipelines.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </>

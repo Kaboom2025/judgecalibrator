@@ -47,11 +47,11 @@ export function VerboseDropdown({ disabled, loading, loadingTarget, answerA, ans
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -6, scale: 0.97 }}
+            initial={{ opacity: 0, y: 6, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97 }}
+            exit={{ opacity: 0, y: 4, scale: 0.97 }}
             transition={{ duration: 0.12 }}
-            className="absolute top-full left-0 mt-1 w-72 bg-surface-container-highest border border-zinc-700 rounded-xl p-3 shadow-xl z-20"
+            className="absolute bottom-full left-0 mb-1 w-72 bg-surface-container-highest border border-zinc-700 rounded-xl p-3 shadow-xl z-20"
           >
             <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500 mb-3">Choose answer to expand</p>
             {(['A', 'B'] as const).map(target => {

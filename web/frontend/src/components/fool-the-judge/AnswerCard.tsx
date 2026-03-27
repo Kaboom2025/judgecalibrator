@@ -52,7 +52,7 @@ export function AnswerCard({
     <motion.div
       animate={{ x: animX }}
       transition={{ duration: 0.35, ease: 'easeInOut' }}
-      className={`bg-surface-container-low rounded-xl overflow-hidden border-l-4 border border-outline-variant/10 transition-all ${BORDER_COLOR[label]} ${isEditing ? 'ring-1 ring-primary/30' : ''}`}
+      className={`bg-surface-container-low rounded-xl border-l-4 border border-outline-variant/10 transition-all ${BORDER_COLOR[label]} ${isEditing ? 'ring-1 ring-primary/30' : ''}`}
     >
       {/* Header */}
       <div className="px-5 py-3 border-b border-outline-variant/10 flex items-center justify-between">
@@ -108,9 +108,9 @@ export function AnswerCard({
           </div>
         )}
 
-        {/* Action bar — visible on hover or while editing */}
+        {/* Action bar — always dimly visible, full opacity on hover */}
         {!isEditing && (
-          <div className="flex items-center gap-2 px-5 py-3 border-t border-outline-variant/10 opacity-0 group-hover/card:opacity-100 transition-opacity bg-surface-container-low">
+          <div className="flex items-center gap-2 px-5 py-3 border-t border-outline-variant/10 opacity-60 group-hover/card:opacity-100 transition-opacity bg-surface-container-low">
             <VerboseDropdown
               disabled={expandLoading}
               loading={expandLoading}

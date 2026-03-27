@@ -232,33 +232,30 @@ export function FoolTheJudge() {
 
       {question && <QuestionBlock question={question.question} />}
 
-      <JudgmentPanel
-        originalEval={originalEval}
-        currentEval={currentEval}
-        prefChanged={prefChanged}
-      />
-
-      {/* Swap feedback banner */}
-      <AnimatePresence>
-        {swapFeedback && (
-          <motion.div
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            className={`rounded-xl px-5 py-3.5 mb-6 flex items-center justify-between ${swapFeedback.prefChanged ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-emerald-500/10 border border-emerald-500/20'}`}
-          >
-            <p className={`font-headline text-sm ${swapFeedback.prefChanged ? 'text-amber-200' : 'text-emerald-300'}`}>
-              {swapFeedback.prefChanged
-                ? 'The judge flipped! Same content, different order — that\'s positional bias.'
-                : 'The judge held steady. Same preference despite the swap.'}
-            </p>
-            <button onClick={() => setSwapFeedback(null)} className="text-zinc-500 hover:text-zinc-300 font-mono text-xs ml-4">✕</button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Answer cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        {(['A', 'B'] as const).map(label => (
+          <AnswerCard
+            key={label}
+            label={label}
+            text={label === 'A' ? answerA : answerB}
+            originalText={label === 'A' ? (question?.answer_a ?? '') : (question?.answer_b ?? '')}
+            isEditing={editMode === label}
+            swapAnimDir={label === 'A' ? swapAnimDir : swapAnimDir === 'right' ? 'left' : swapAnimDir === 'left' ? 'right' : null}
+            expandLoading={expandState.loading}
+            expandLoadingTarget={expandState.target}
+            onTextChange={text => label === 'A' ? setAnswerA(text) : setAnswerB(text)}
+            onStartEdit={() => setEditMode(label)}
+            onStopEdit={() => setEditMode(null)}
+            onExpand={method => handleExpand(label, method)}
+            onExpandOther={(target, method) => handleExpand(target, method)}
+            otherText={label === 'A' ? answerB : answerA}
+          />
+        ))}
+      </div>
 
       {/* Toolbar: Swap + Re-evaluate */}
-      <div className="flex flex-wrap gap-3 mb-6">
+      <div className="flex flex-wrap gap-3 mb-4">
         <button
           onClick={handleSwap}
           disabled={currentEval.loading || !originalEval.result}
@@ -280,6 +277,25 @@ export function FoolTheJudge() {
         )}
       </div>
 
+      {/* Swap feedback banner */}
+      <AnimatePresence>
+        {swapFeedback && (
+          <motion.div
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            className={`rounded-xl px-5 py-3.5 mb-6 flex items-center justify-between ${swapFeedback.prefChanged ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-emerald-500/10 border border-emerald-500/20'}`}
+          >
+            <p className={`font-headline text-sm ${swapFeedback.prefChanged ? 'text-amber-200' : 'text-emerald-300'}`}>
+              {swapFeedback.prefChanged
+                ? 'The judge flipped! Same content, different order — that\'s positional bias.'
+                : 'The judge held steady. Same preference despite the swap.'}
+            </p>
+            <button onClick={() => setSwapFeedback(null)} className="text-zinc-500 hover:text-zinc-300 font-mono text-xs ml-4">✕</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {expandState.error && (
         <p className="text-red-400 font-mono text-xs mb-4">{expandState.error}</p>
       )}
@@ -287,27 +303,12 @@ export function FoolTheJudge() {
         <p className="text-red-400 font-mono text-xs mb-4">{currentEval.error}</p>
       )}
 
-      {/* Answer cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {(['A', 'B'] as const).map(label => (
-          <AnswerCard
-            key={label}
-            label={label}
-            text={label === 'A' ? answerA : answerB}
-            originalText={label === 'A' ? (question?.answer_a ?? '') : (question?.answer_b ?? '')}
-            isEditing={editMode === label}
-            swapAnimDir={label === 'A' ? swapAnimDir : swapAnimDir === 'right' ? 'left' : swapAnimDir === 'left' ? 'right' : null}
-            expandLoading={expandState.loading}
-            expandLoadingTarget={expandState.target}
-            onTextChange={text => label === 'A' ? setAnswerA(text) : setAnswerB(text)}
-            onStartEdit={() => setEditMode(label)}
-            onStopEdit={() => setEditMode(null)}
-            onExpand={method => handleExpand(label, method)}
-            onExpandOther={(target, method) => handleExpand(target, method)}
-            otherText={label === 'A' ? answerB : answerA}
-          />
-        ))}
-      </div>
+      <JudgmentPanel
+        originalEval={originalEval}
+        currentEval={currentEval}
+        prefChanged={prefChanged}
+        hasUserActed={hasChanges || swapFeedback !== null || biasesFound.size > 0}
+      />
 
       <BiasExplainer lastBiasTriggered={lastBiasTriggered} biasesFound={biasesFound} />
     </div>

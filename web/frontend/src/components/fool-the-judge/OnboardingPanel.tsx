@@ -73,8 +73,13 @@ export function OnboardingPanel() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-                {TOOLS.map(tool => (
-                  <div key={tool.label} className="bg-surface-container rounded-lg p-3.5">
+                {TOOLS.map((tool, i) => (
+                  <div key={tool.label} className={`bg-surface-container rounded-lg p-3.5 ${i === 0 ? 'ring-1 ring-primary/30' : ''}`}>
+                    {i === 0 && (
+                      <span className="font-mono text-[9px] uppercase tracking-wider text-on-primary bg-primary px-1.5 py-0.5 rounded mb-2 inline-block">
+                        Try first
+                      </span>
+                    )}
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-primary">{tool.icon}</span>
                       <span className="font-mono text-xs font-semibold text-zinc-200">{tool.label}</span>
@@ -89,7 +94,7 @@ export function OnboardingPanel() {
 
               <div className="flex items-center justify-between">
                 <p className="font-mono text-[10px] text-zinc-600">
-                  Try all 3 tools to find all biases → <span className="text-zinc-500">0/3 found</span>
+                  Start by clicking <span className="text-zinc-400">"Swap A ↔ B"</span> below the answers — it's the quickest bias to trigger.
                 </p>
                 <button
                   onClick={dismiss}
