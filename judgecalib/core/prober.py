@@ -6,6 +6,28 @@ from judgecalib.core.judge_wrapper import JudgeWrapper
 from judgecalib.core import analyzer
 
 
+def _get_model_family(model_name: str) -> str:
+    """Return the provider family for a model name."""
+    name = model_name.lower()
+    if any(k in name for k in ("gpt", "o1", "o3", "davinci", "openai")):
+        return "openai"
+    if any(k in name for k in ("claude", "anthropic")):
+        return "anthropic"
+    if any(k in name for k in ("gemini", "bard", "palm")):
+        return "google"
+    if any(k in name for k in ("llama", "meta-llama")):
+        return "meta"
+    if any(k in name for k in ("gemma",)):
+        return "google"
+    if any(k in name for k in ("mistral", "mixtral")):
+        return "mistral"
+    if any(k in name for k in ("qwen",)):
+        return "alibaba"
+    if any(k in name for k in ("deepseek",)):
+        return "deepseek"
+    return "unknown"
+
+
 def _pad_text(text: str, target_ratio: float = 1.5) -> str:
     """
     Add padding to text to increase word count without changing meaning.
@@ -366,6 +388,73 @@ class Prober:
 
         return result
 
+    def run_self_preference(self) -> ProbeResult:
+        """
+        Run self-preference bias probe.
+
+        Measures whether the judge disproportionately favors answers from its
+        own model family. Requires tasks with ``model_a``/``model_b`` provenance
+        in metadata (e.g. loaded from Chatbot Arena).
+
+        A rate of 0.5 indicates no bias; values above 0.55 indicate meaningful
+        self-preference.
+
+        Returns:
+            ProbeResult with self_preference_rate metric (0.0–1.0)
+        """
+        same_family_preferred = 0
+        total_with_provenance = 0
+        judge_family = _get_model_family(self.judge.model_name)
+
+        for task in self.tasks:
+            model_a = task.metadata.get("model_a", "")
+            model_b = task.metadata.get("model_b", "")
+
+            if not model_a or not model_b:
+                continue
+            if task.options is None or len(task.options) < 2:
+                continue
+
+            family_a = _get_model_family(model_a)
+            family_b = _get_model_family(model_b)
+
+            # Only count tasks where exactly one option is from the judge's family
+            a_is_same = family_a == judge_family and judge_family != "unknown"
+            b_is_same = family_b == judge_family and judge_family != "unknown"
+
+            if a_is_same == b_is_same:
+                continue
+
+            result = self.judge.evaluate_pairwise(
+                task.question, task.options[0], task.options[1]
+            )
+            preferred_a = result["preference"] == "A"
+
+            if (preferred_a and a_is_same) or (not preferred_a and b_is_same):
+                same_family_preferred += 1
+
+            total_with_provenance += 1
+
+            if self.progress_callback:
+                self.progress_callback(total_with_provenance, len(self.tasks))
+
+        rate = (
+            same_family_preferred / total_with_provenance
+            if total_with_provenance > 0
+            else 0.5
+        )
+
+        return ProbeResult(
+            probe_name="self_preference",
+            metric_name="self_preference_rate",
+            metric_value=rate,
+            details={
+                "judge_family": judge_family,
+                "total_with_provenance": total_with_provenance,
+                "same_family_preferred": same_family_preferred,
+            },
+        )
+
     def run_all(
         self, rephraser: "Rephraser", n_rephrasings: int = 5  # noqa: F821
     ) -> AuditReport:
@@ -390,6 +479,7 @@ class Prober:
             self.run_positional_bias(),
             self.run_verbosity_bias(),
             self.run_human_alignment(),
+            self.run_self_preference(),
         ]
 
         # Extract metrics for trust grade computation
@@ -397,11 +487,13 @@ class Prober:
         consistency_probe = probes[1]
         positional_bias_probe = probes[2]
         human_alignment_probe = probes[4]
+        self_preference_probe = probes[5]
 
         ece = calibration_probe.metric_value
         consistency_sd = consistency_probe.metric_value
         flip_rate = positional_bias_probe.metric_value
         spearman = human_alignment_probe.metric_value
+        self_preference_rate = self_preference_probe.metric_value
 
         # Compute trust grade
         trust_grade, recommendations = analyzer.compute_trust_grade(
@@ -409,6 +501,7 @@ class Prober:
             consistency_sd=consistency_sd,
             flip_rate=flip_rate,
             spearman=spearman,
+            self_preference_rate=self_preference_rate,
         )
 
         # Create audit report

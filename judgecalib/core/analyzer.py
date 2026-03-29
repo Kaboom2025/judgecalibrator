@@ -108,14 +108,15 @@ def compute_trust_grade(
     consistency_sd: float = 0.0,
     flip_rate: float = 0.0,
     spearman: float = 1.0,
+    self_preference_rate: float = 0.5,
 ) -> Tuple[TrustGrade, List[str]]:
     """
     Compute trust grade from probe metrics.
 
     Grading rubric:
-    - A:  ece < 0.05, sd < 0.5, flip < 0.05, spearman > 0.80
-    - B+: ece < 0.10, sd < 0.8, flip < 0.15, spearman > 0.70
-    - B:  ece < 0.15, sd < 1.2, flip < 0.30, spearman > 0.60
+    - A:  ece < 0.05, sd < 0.5, flip < 0.05, spearman > 0.80, self_pref < 0.55
+    - B+: ece < 0.10, sd < 0.8, flip < 0.15, spearman > 0.70, self_pref < 0.60
+    - B:  ece < 0.15, sd < 1.2, flip < 0.30, spearman > 0.60, self_pref < 0.65
     - C:  anything worse
 
     Args:
@@ -123,6 +124,8 @@ def compute_trust_grade(
         consistency_sd: Standard deviation of scores on rephrased prompts
         flip_rate: Fraction of pairwise comparisons that flip (0-1)
         spearman: Spearman rank correlation with human judges (-1 to 1)
+        self_preference_rate: Fraction of cross-family comparisons where judge
+            preferred its own family (0.5 = no bias, >0.65 = significant)
 
     Returns:
         Tuple of (TrustGrade, list of recommendations)
@@ -130,11 +133,14 @@ def compute_trust_grade(
     recommendations = []
 
     # Determine grade based on metrics
-    if ece < 0.05 and consistency_sd < 0.5 and flip_rate < 0.05 and spearman > 0.80:
+    if (ece < 0.05 and consistency_sd < 0.5 and flip_rate < 0.05
+            and spearman > 0.80 and self_preference_rate < 0.55):
         grade = TrustGrade.A
-    elif ece < 0.10 and consistency_sd < 0.8 and flip_rate < 0.15 and spearman > 0.70:
+    elif (ece < 0.10 and consistency_sd < 0.8 and flip_rate < 0.15
+            and spearman > 0.70 and self_preference_rate < 0.60):
         grade = TrustGrade.B_PLUS
-    elif ece < 0.15 and consistency_sd < 1.2 and flip_rate < 0.30 and spearman > 0.60:
+    elif (ece < 0.15 and consistency_sd < 1.2 and flip_rate < 0.30
+            and spearman > 0.60 and self_preference_rate < 0.65):
         grade = TrustGrade.B
     else:
         grade = TrustGrade.C
@@ -162,6 +168,12 @@ def compute_trust_grade(
         recommendations.append(
             f"Human alignment is weak (Spearman={spearman:.2f}). "
             "Judge may not correlate with human preferences."
+        )
+
+    if self_preference_rate > 0.60:
+        recommendations.append(
+            f"Self-preference bias detected (rate={self_preference_rate:.2f}). "
+            "Judge disproportionately favors answers from its own model family."
         )
 
     return grade, recommendations

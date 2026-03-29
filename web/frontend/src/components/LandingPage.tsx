@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AppTab, PrecomputedResult, ProbeResult } from '../types';
 import { MetricIcon } from './MetricIcon';
+import { KeyFindings } from './KeyFindings';
+import { BiasBarChart } from './BiasBarChart';
+import { CalibrationCurveChart } from './CalibrationCurveChart';
 
 interface LandingPageProps {
   onTabChange: (tab: AppTab) => void;
 }
 
-type SortKey = 'rank' | 'calibration' | 'consistency' | 'positional_bias' | 'verbosity_bias' | 'human_alignment';
+type SortKey = 'rank' | 'calibration' | 'consistency' | 'positional_bias' | 'verbosity_bias' | 'human_alignment' | 'self_preference';
 
 function probeStatus(p: ProbeResult): 'success' | 'warning' | 'error' {
   const v = p.metric_value;
@@ -16,6 +19,7 @@ function probeStatus(p: ProbeResult): 'success' | 'warning' | 'error' {
     case 'positional_bias': return v < 0.05 ? 'success' : v < 0.30 ? 'warning' : 'error';
     case 'verbosity_bias':  return v < 0.3  ? 'success' : v < 0.9  ? 'warning' : 'error';
     case 'human_alignment': return v > 0.80 ? 'success' : v > 0.60 ? 'warning' : 'error';
+    case 'self_preference': return v < 0.55 ? 'success' : v < 0.65 ? 'warning' : 'error';
     default: return 'warning';
   }
 }
@@ -51,6 +55,7 @@ const COLS: { key: SortKey; label: string; icon: string; shortLabel: string; for
   { key: 'positional_bias', label: 'Positional Flip',   shortLabel: 'Pos.',   icon: 'Radar',         format: v => `${(v*100).toFixed(0)}%` },
   { key: 'verbosity_bias',  label: 'Verbosity Lift',    shortLabel: 'Verb.',  icon: 'AlertTriangle', format: v => `+${v.toFixed(2)}` },
   { key: 'human_alignment', label: 'Human Alignment ρ', shortLabel: 'Align.', icon: 'ShieldCheck',   format: v => v.toFixed(2) },
+  { key: 'self_preference', label: 'Self-Preference Rate', shortLabel: 'Self-Pref.', icon: 'BrainCircuit', format: v => v.toFixed(2) },
 ];
 
 function formatGrade(grade: string) { return grade.replace('_PLUS', '+'); }
@@ -115,7 +120,7 @@ function Row({ rank, result, expanded, onToggle }: RowProps) {
       {/* Expanded recommendations row */}
       {expanded && (
         <tr className="bg-surface-container/20">
-          <td colSpan={8} className="px-6 py-4">
+          <td colSpan={9} className="px-6 py-4">
             <div className="flex flex-wrap gap-2">
               {result.recommendations.map((rec, i) => (
                 <span key={i} className="flex items-start gap-2 text-xs text-zinc-400 font-headline leading-relaxed basis-full sm:basis-auto sm:flex-1 sm:min-w-[280px]">
@@ -181,6 +186,7 @@ export function LandingPage({ onTabChange }: LandingPageProps) {
         <p className="text-zinc-400 text-lg font-headline max-w-2xl mx-auto mb-10 leading-relaxed">
           LLM judges are biased. They prefer longer answers, flip decisions based on answer order,
           and contradict themselves. JudgeCalibrator measures exactly how biased your judge is.
+          15 models tested across 580 tasks from MT-Bench and Chatbot Arena.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <button
@@ -197,6 +203,18 @@ export function LandingPage({ onTabChange }: LandingPageProps) {
           </button>
         </div>
       </div>
+
+      {/* Charts section */}
+      {!loading && results.length > 0 && (
+        <div className="mb-12">
+          <KeyFindings results={results} />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
+            <BiasBarChart results={results} />
+            <CalibrationCurveChart results={results} />
+          </div>
+        </div>
+      )}
 
       {/* Leaderboard */}
       {!loading && results.length > 0 && (
@@ -305,11 +323,17 @@ export function LandingPage({ onTabChange }: LandingPageProps) {
                               <div><span className="text-amber-500">●</span> &lt;30% caution</div>
                               <div><span className="text-red-500">●</span> ≥30% fail</div>
                             </>
-                          : <>
-                              <div><span className="text-emerald-500">●</span> &lt;+0.3 pass</div>
-                              <div><span className="text-amber-500">●</span> &lt;+0.9 caution</div>
-                              <div><span className="text-red-500">●</span> ≥+0.9 fail</div>
-                            </>
+                          : col.key === 'self_preference'
+                            ? <>
+                                <div><span className="text-emerald-500">●</span> &lt;0.55 pass</div>
+                                <div><span className="text-amber-500">●</span> &lt;0.65 caution</div>
+                                <div><span className="text-red-500">●</span> ≥0.65 fail</div>
+                              </>
+                            : <>
+                                <div><span className="text-emerald-500">●</span> &lt;+0.3 pass</div>
+                                <div><span className="text-amber-500">●</span> &lt;+0.9 caution</div>
+                                <div><span className="text-red-500">●</span> ≥+0.9 fail</div>
+                              </>
                   }
                 </div>
               </div>
