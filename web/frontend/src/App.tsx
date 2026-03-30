@@ -9,7 +9,7 @@ import { AuditDashboard, AuditDashboardRef } from './components/AuditDashboard';
 function tabFromHash(): AppTab {
   const h = window.location.hash;
   if (h === '#demo') return 'demo';
-  if (h === '#audit') return 'audit';
+  if (h === '#audit') { window.location.hash = ''; return 'home'; }
   return 'home';
 }
 

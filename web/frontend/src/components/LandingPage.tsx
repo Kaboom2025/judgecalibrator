@@ -195,12 +195,6 @@ export function LandingPage({ onTabChange }: LandingPageProps) {
           >
             Try the Interactive Demo
           </button>
-          <button
-            onClick={() => onTabChange('audit')}
-            className="border border-zinc-700 text-zinc-300 px-8 py-3 rounded-md font-semibold text-sm tracking-wide transition-all hover:border-zinc-500 hover:text-zinc-100 active:scale-95"
-          >
-            Run Full Audit
-          </button>
         </div>
       </div>
 

@@ -1,0 +1,11 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/judgecalibrator-backend'
+      - '-f'
+      - 'web/backend/Dockerfile'
+      - '.'
+images:
+  - 'gcr.io/$PROJECT_ID/judgecalibrator-backend'
