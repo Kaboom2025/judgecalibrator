@@ -132,9 +132,19 @@ def _get_demo_tasks() -> List[Any]:
         if _demo_tasks is not None:
             return _demo_tasks
         from judgecalib.benchmarks.mt_bench import load_mt_bench
-        tasks = load_mt_bench()
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            tasks = load_mt_bench(cache_dir="/tmp/benchmarks")
+        except Exception as e:
+            logger.error(f"Failed to load MT-Bench: {e}")
+            return []
         # Only keep tasks with two options (pairwise)
-        _demo_tasks = [t for t in tasks if t.options and len(t.options) >= 2]
+        pairwise = [t for t in tasks if t.options and len(t.options) >= 2]
+        if not pairwise:
+            logger.warning(f"MT-Bench loaded {len(tasks)} tasks but 0 pairwise — not caching")
+            return []
+        _demo_tasks = pairwise
     return _demo_tasks
 
 

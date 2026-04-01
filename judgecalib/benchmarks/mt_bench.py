@@ -18,9 +18,12 @@ def load_mt_bench(cache_dir: str = "data/benchmarks") -> List[Task]:
     Returns:
         List of Task objects with question, reference_answer, options, and human_score
     """
+    import logging
+    logger = logging.getLogger(__name__)
     try:
-        dataset = load_dataset("lmsys/mt_bench_human_judgments", split="human")
-    except Exception:
+        dataset = load_dataset("lmsys/mt_bench_human_judgments", split="human", cache_dir=cache_dir)
+    except Exception as e:
+        logger.error(f"Failed to load MT-Bench dataset: {e}")
         return []
 
     tasks = []
