@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://judgecalibrator-backend-nfzcpsm3fq-uc.a.run.app/api/:path*"
+      "destination": "https://judgecalibrator-backend-80302276804.us-central1.run.app/api/:path*"
     }
   ],
   "headers": [

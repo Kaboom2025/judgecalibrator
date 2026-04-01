@@ -131,15 +131,26 @@ def _get_demo_tasks() -> List[Any]:
     with _demo_tasks_lock:
         if _demo_tasks is not None:
             return _demo_tasks
-        from judgecalib.benchmarks.mt_bench import load_mt_bench
         import logging
         logger = logging.getLogger(__name__)
+        # Try bundled demo data first (no network required)
+        bundled = Path(__file__).parent / "demo_data.json"
+        if bundled.exists():
+            try:
+                from judgecalib.schemas import Task
+                raw = json.loads(bundled.read_text())
+                _demo_tasks = [Task(**item) for item in raw]
+                logger.info(f"Loaded {len(_demo_tasks)} demo tasks from bundled data")
+                return _demo_tasks
+            except Exception as e:
+                logger.error(f"Failed to load bundled demo data: {e}")
+        # Fallback: download from HuggingFace
+        from judgecalib.benchmarks.mt_bench import load_mt_bench
         try:
             tasks = load_mt_bench(cache_dir="/tmp/benchmarks")
         except Exception as e:
             logger.error(f"Failed to load MT-Bench: {e}")
             return []
-        # Only keep tasks with two options (pairwise)
         pairwise = [t for t in tasks if t.options and len(t.options) >= 2]
         if not pairwise:
             logger.warning(f"MT-Bench loaded {len(tasks)} tasks but 0 pairwise — not caching")
